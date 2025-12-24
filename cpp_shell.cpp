@@ -1,3 +1,10 @@
+/**
+ * C++ Shell / Terminal Emulator - Windows Edition
+ * Refactored with proper OOP class structure
+ * 
+ * Classes: CommandParser, BuiltInCommands, ExternalExecutor, Terminal
+ */
+
 #include <iostream>
 #include <string>
 #include <vector>
@@ -8,35 +15,14 @@
 #include <fstream>
 #include <shellapi.h>
 
+// ============================================================================
+// CommandParser Class - Handles parsing of user input
+// ============================================================================
 
-class Shell {
+class CommandParser {
 private:
-    std::vector<std::string> history;   // Command history storage
-    std::string username;                // Current username
-    std::string currentDir;              // Current working directory
-    bool running;                        // Shell running state
-    const std::string VERSION = "1.0.0"; // Shell version
-
-    // Get Windows username
-    std::string getUsername() {
-        char buffer[256];
-        DWORD size = sizeof(buffer);
-        if (GetUserNameA(buffer, &size)) {
-            return std::string(buffer);
-        }
-        return "user";
-    }
-
-    // Get current working directory
-    std::string getCurrentDirectory() {
-        char buffer[MAX_PATH];
-        if (_getcwd(buffer, MAX_PATH) != nullptr) {
-            return std::string(buffer);
-        }
-        return "C:\\";
-    }
-
-    // Trim whitespace from string
+    std::vector<std::string> tokens;
+    
     std::string trim(const std::string& str) {
         size_t start = str.find_first_not_of(" \t\n\r");
         if (start == std::string::npos) return "";
@@ -44,99 +30,69 @@ private:
         return str.substr(start, end - start + 1);
     }
 
-    // Parse input into command and arguments
-    std::vector<std::string> parseCommand(const std::string& input) {
-        std::vector<std::string> tokens;
+public:
+    // Tokenize input string into parts
+    void tokenize(const std::string& input) {
+        tokens.clear();
         std::istringstream iss(trim(input));
         std::string token;
         while (iss >> token) {
             tokens.push_back(token);
         }
+    }
+    
+    // Get the command (first token)
+    std::string getCommand() const {
+        if (tokens.empty()) return "";
+        return tokens[0];
+    }
+    
+    // Get all arguments (tokens after command)
+    std::vector<std::string> getArguments() const {
         return tokens;
     }
+    
+    // Check if input is empty
+    bool isEmpty() const {
+        return tokens.empty();
+    }
+};
+
+// ============================================================================
+// BuiltInCommands Class - Handles all built-in shell commands
+// ============================================================================
+
+class BuiltInCommands {
+private:
+    std::vector<std::string>& history;
+    const std::string VERSION = "1.0.0";
 
 public:
-    // Constructor
-    Shell() : running(true) {
-        username = getUsername();
-        currentDir = getCurrentDirectory();
-    }
-
-    // Initialize terminal window
-    void initialize() {
-        SetConsoleTitleA("C++ Shell / Terminal — cpp-shell");
-        system("cls");
-
-        std::cout << "\n";
-        std::cout << "  --------------------------------------------\n";
-        std::cout << "    C++ Shell / Terminal Emulator (cpp-shell)\n";
-        std::cout << "    Version: " << VERSION << "\n";
-        std::cout << "    Type '-help' to list available commands\n";
-        std::cout << "    **Created by Ojaskar and Sushant**\n";
-        std::cout << "  --------------------------------------------\n\n";
-    }
-
-    // Display prompt
-    void displayPrompt() {
-        currentDir = getCurrentDirectory();
-        std::cout << "\033[36m" << username << "@cpp-shell \033[33m" << currentDir << "\033[0m\n";
-        std::cout << "\033[32m>>> \033[0m";
-    }
-
-    // Save command to history
-    void saveToHistory(const std::string& cmd) {
-        std::string trimmed = trim(cmd);
-        if (!trimmed.empty()) {
-            history.push_back(trimmed);
+    BuiltInCommands(std::vector<std::string>& hist) : history(hist) {}
+    
+    // cd - change directory
+    void cd(const std::vector<std::string>& args) {
+        std::string target;
+        
+        if (args.size() < 2) {
+            const char* home = getenv("USERPROFILE");
+            if (home) {
+                target = home;
+            } else {
+                std::cout << "  Error: Cannot find home directory\n";
+                return;
+            }
+        } else {
+            target = args[1];
+        }
+        
+        if (_chdir(target.c_str()) != 0) {
+            std::cout << "  Error: Cannot find directory '" << target << "'\n";
         }
     }
-
-    // -help command
-    void cmdHelp() {
-        std::cout << "\n  Custom Commands:\n";
-        std::cout << "  ----------------\n";
-        std::cout << "  -help          Show this help message\n";
-        std::cout << "  -version       Show shell version\n";
-        std::cout << "  -history       Show command history\n";
-        std::cout << "  wd             Show current working directory\n";
-        std::cout << "  rename <old> <new>  Rename a file or folder\n";
-        std::cout << "  move <src> <dest>   Move a file or folder\n";
-        std::cout << "\n  Built-in Commands:\n";
-        std::cout << "  ------------------\n";
-        std::cout << "  ls [dir]       List directory contents\n";
-        std::cout << "  cd <dir>       Change directory\n";
-        std::cout << "  cat <file>     Display file contents\n";
-        std::cout << "  mkdir <dir>    Create a new directory\n";
-        std::cout << "  rm <path>      Delete a file or folder\n";
-        std::cout << "  clear          Clear the screen\n";
-        std::cout << "  notepad [file] Open Notepad\n";
-        std::cout << "  code [path]    Open VS Code\n";
-        std::cout << "  exit           Exit the shell\n\n";
-    }
-
-    // -version command
-    void cmdVersion() {
-        std::cout << "\n  cpp-shell version " << VERSION << "\n";
-        std::cout << "  Windows Edition\n";
-        std::cout << "  Built with C++\n\n";
-    }
-
-    // -history command
-    void cmdHistory() {
-        if (history.empty()) {
-            std::cout << "  No commands in history.\n";
-            return;
-        }
-        std::cout << "\n  Command History:\n";
-        std::cout << "  ----------------\n";
-        for (size_t i = 0; i < history.size(); i++) {
-            std::cout << "  " << (i + 1) << ". " << history[i] << "\n";
-        }
-        std::cout << "\n";
-    }
-
-    // ls command - list directory contents
-    void cmdLs(const std::vector<std::string>& args) {
+    
+    // ls - list directory contents
+    void ls(const std::vector<std::string>& args) {
         std::string path = ".";
         if (args.size() > 1) {
             path = args[1];
@@ -168,33 +124,64 @@ public:
         FindClose(hFind);
         std::cout << "\n";
     }
-
-    // cd command - change directory
-    void cmdCd(const std::vector<std::string>& args) {
-        std::string target;
-        
-        if (args.size() < 2) {
-            // Go to user profile directory
-            const char* home = getenv("USERPROFILE");
-            if (home) {
-                target = home;
-            } else {
-                std::cout << "  Error: Cannot find home directory\n";
-                return;
-            }
-        } else {
-            target = args[1];
-        }
-        
-        if (_chdir(target.c_str()) != 0) {
-            std::cout << "  Error: Cannot find directory '" << target << "'\n";
-        } else {
-            currentDir = getCurrentDirectory();
-        }
+    
+    // clear - clear screen
+    void clear() {
+        system("cls");
     }
-
-    // cat command - display file contents
-    void cmdCat(const std::vector<std::string>& args) {
+    
+    // help - display help message
+    void help() {
+        std::cout << "\n  Custom Commands:\n";
+        std::cout << "  ----------------\n";
+        std::cout << "  -help          Show this help message\n";
+        std::cout << "  -version       Show shell version\n";
+        std::cout << "  -history       Show command history\n";
+        std::cout << "  wd             Show current working directory\n";
+        std::cout << "  rename <old> <new>  Rename a file or folder\n";
+        std::cout << "  move <src> <dest>   Move a file or folder\n";
+        std::cout << "\n  Built-in Commands:\n";
+        std::cout << "  ------------------\n";
+        std::cout << "  ls [dir]       List directory contents\n";
+        std::cout << "  cd <dir>       Change directory\n";
+        std::cout << "  cat <file>     Display file contents\n";
+        std::cout << "  mkdir <dir>    Create a new directory\n";
+        std::cout << "  rm <path>      Delete a file or folder\n";
+        std::cout << "  clear          Clear the screen\n";
+        std::cout << "  notepad [file] Open Notepad\n";
+        std::cout << "  code [path]    Open VS Code\n";
+        std::cout << "  exit           Exit the shell\n\n";
+    }
+    
+    // exit - handled in Terminal class, returns false
+    bool exit() {
+        std::cout << "  Goodbye!\n";
+        return false;
+    }
+    
+    // version - display version
+    void version() {
+        std::cout << "\n  cpp-shell version " << VERSION << "\n";
+        std::cout << "  Windows Edition\n";
+        std::cout << "  Built with C++\n\n";
+    }
+    
+    // showHistory - display command history
+    void showHistory() {
+        if (history.empty()) {
+            std::cout << "  No commands in history.\n";
+            return;
+        }
+        std::cout << "\n  Command History:\n";
+        std::cout << "  ----------------\n";
+        for (size_t i = 0; i < history.size(); i++) {
+            std::cout << "  " << (i + 1) << ". " << history[i] << "\n";
+        }
+        std::cout << "\n";
+    }
+    
+    // cat - display file contents
+    void cat(const std::vector<std::string>& args) {
         if (args.size() < 2) {
             std::cout << "  Usage: cat <filename>\n";
             return;
@@ -214,9 +201,9 @@ public:
         std::cout << "\n";
         file.close();
     }
-
-    // mkdir command - create directory
-    void cmdMkdir(const std::vector<std::string>& args) {
+    
+    // mkdir - create directory
+    void mkdir(const std::vector<std::string>& args) {
         if (args.size() < 2) {
             std::cout << "  Usage: mkdir <directory>\n";
             return;
@@ -233,14 +220,9 @@ public:
             }
         }
     }
-
-    // clear command - clear screen
-    void cmdClear() {
-        system("cls");
-    }
-
-    // rm command - delete file or folder
-    void cmdRm(const std::vector<std::string>& args) {
+    
+    // rm - delete file or folder
+    void rm(const std::vector<std::string>& args) {
         if (args.size() < 2) {
             std::cout << "  Usage: rm <file_or_folder>\n";
             return;
@@ -255,14 +237,12 @@ public:
         }
         
         if (attrs & FILE_ATTRIBUTE_DIRECTORY) {
-            // Remove directory
             if (RemoveDirectoryA(target.c_str())) {
                 std::cout << "  Directory '" << target << "' deleted.\n";
             } else {
                 std::cout << "  Error: Cannot delete '" << target << "' (folder may not be empty)\n";
             }
         } else {
-            // Remove file
             if (DeleteFileA(target.c_str())) {
                 std::cout << "  File '" << target << "' deleted.\n";
             } else {
@@ -270,53 +250,31 @@ public:
             }
         }
     }
-
-    // notepad command - open notepad
-    void cmdNotepad(const std::vector<std::string>& args) {
-        std::string file = "";
-        if (args.size() > 1) {
-            file = args[1];
+    
+    // wd - show working directory
+    void wd() {
+        char buffer[MAX_PATH];
+        if (_getcwd(buffer, MAX_PATH) != nullptr) {
+            std::cout << "  " << buffer << "\n";
         }
-        
-        ShellExecuteA(NULL, "open", "notepad.exe", file.c_str(), NULL, SW_SHOWNORMAL);
-        std::cout << "  Notepad opened.\n";
     }
-
-    // code command - open VS Code
-    void cmdCode(const std::vector<std::string>& args) {
-        std::string path = ".";
-        if (args.size() > 1) {
-            path = args[1];
-        }
-        
-        ShellExecuteA(NULL, "open", "code", path.c_str(), NULL, SW_SHOWNORMAL);
-        std::cout << "  VS Code opened.\n";
-    }
-
-    // wd command - show working directory (custom)
-    void cmdWd() {
-        std::cout << "  " << getCurrentDirectory() << "\n";
-    }
-
-    // rename command - rename file or folder
-    void cmdRename(const std::vector<std::string>& args) {
+    
+    // rename - rename file or folder
+    void rename(const std::vector<std::string>& args) {
         if (args.size() < 3) {
             std::cout << "  Usage: rename <old_name> <new_name>\n";
             return;
         }
         
-        std::string oldName = args[1];
-        std::string newName = args[2];
-        
-        if (MoveFileA(oldName.c_str(), newName.c_str())) {
-            std::cout << "  Renamed '" << oldName << "' to '" << newName << "'\n";
+        if (MoveFileA(args[1].c_str(), args[2].c_str())) {
+            std::cout << "  Renamed '" << args[1] << "' to '" << args[2] << "'\n";
         } else {
-            std::cout << "  Error: Cannot rename '" << oldName << "'\n";
+            std::cout << "  Error: Cannot rename '" << args[1] << "'\n";
         }
     }
-
-    // move command - move file or folder
-    void cmdMove(const std::vector<std::string>& args) {
+    
+    // move - move file or folder
+    void move(const std::vector<std::string>& args) {
         if (args.size() < 3) {
             std::cout << "  Usage: move <source> <destination>\n";
             return;
@@ -325,10 +283,8 @@ public:
         std::string source = args[1];
         std::string dest = args[2];
         
-        // Check if destination is a directory
         DWORD destAttrs = GetFileAttributesA(dest.c_str());
         if (destAttrs != INVALID_FILE_ATTRIBUTES && (destAttrs & FILE_ATTRIBUTE_DIRECTORY)) {
-            // Extract filename from source and append to dest
             size_t pos = source.find_last_of("\\/");
             std::string filename = (pos != std::string::npos) ? source.substr(pos + 1) : source;
             dest += "\\" + filename;
@@ -340,91 +296,194 @@ public:
             std::cout << "  Error: Cannot move '" << source << "'\n";
         }
     }
+};
 
-    // Process and execute command
-    bool processCommand(const std::string& input) {
-        std::vector<std::string> args = parseCommand(input);
-        
-        if (args.empty()) return true;
+// ============================================================================
+// ExternalExecutor Class - Handles external program execution
+// ============================================================================
 
-        std::string cmd = args[0];
-
-        // Exit command
-        if (cmd == "exit") {
-            std::cout << "  Goodbye!\n";
-            return false;
-        }
-
-        // Save to history
-        saveToHistory(input);
-
-        // Custom commands (with dash prefix)
-        if (cmd == "-help") {
-            cmdHelp();
-        }
-        else if (cmd == "-version") {
-            cmdVersion();
-        }
-        else if (cmd == "-history") {
-            cmdHistory();
-        }
-        // Built-in commands
-        else if (cmd == "ls" || cmd == "dir") {
-            cmdLs(args);
-        }
-        else if (cmd == "cd") {
-            cmdCd(args);
-        }
-        else if (cmd == "cat" || cmd == "type") {
-            cmdCat(args);
-        }
-        else if (cmd == "mkdir") {
-            cmdMkdir(args);
-        }
-        else if (cmd == "clear" || cmd == "cls") {
-            cmdClear();
-        }
-        else if (cmd == "rm" || cmd == "del" || cmd == "delete") {
-            cmdRm(args);
-        }
-        else if (cmd == "notepad") {
-            cmdNotepad(args);
+class ExternalExecutor {
+public:
+    // Run external system command
+    void runSystemCommand(const std::string& cmd, const std::vector<std::string>& args) {
+        if (cmd == "notepad") {
+            std::string file = (args.size() > 1) ? args[1] : "";
+            ShellExecuteA(NULL, "open", "notepad.exe", file.c_str(), NULL, SW_SHOWNORMAL);
+            std::cout << "  Notepad opened.\n";
         }
         else if (cmd == "code") {
-            cmdCode(args);
+            std::string path = (args.size() > 1) ? args[1] : ".";
+            ShellExecuteA(NULL, "open", "code", path.c_str(), NULL, SW_SHOWNORMAL);
+            std::cout << "  VS Code opened.\n";
+        }
+        else {
+            std::cout << "  '" << cmd << "' is not recognized.\n";
+            std::cout << "  Type '-help' for available commands.\n";
+        }
+    }
+};
+
+// ============================================================================
+// Terminal Class - Main terminal controller
+// ============================================================================
+
+class Terminal {
+private:
+    std::string currentDirectory;
+    std::vector<std::string> history;
+    std::string username;
+    bool running;
+    const std::string VERSION = "1.0.0";
+    
+    CommandParser parser;
+    BuiltInCommands* builtIn;
+    ExternalExecutor executor;
+
+    std::string getUsername() {
+        char buffer[256];
+        DWORD size = sizeof(buffer);
+        if (GetUserNameA(buffer, &size)) {
+            return std::string(buffer);
+        }
+        return "user";
+    }
+    
+    std::string getCurrentDirectory() {
+        char buffer[MAX_PATH];
+        if (_getcwd(buffer, MAX_PATH) != nullptr) {
+            return std::string(buffer);
+        }
+        return "C:\\";
+    }
+
+public:
+    Terminal() : running(true) {
+        username = getUsername();
+        currentDirectory = getCurrentDirectory();
+        builtIn = new BuiltInCommands(history);
+    }
+    
+    ~Terminal() {
+        delete builtIn;
+    }
+    
+    // Start terminal - initialize window
+    void start() {
+        SetConsoleTitleA("C++ Shell / Terminal — cpp-shell");
+        system("cls");
+
+        std::cout << "\n";
+        std::cout << "  --------------------------------------------\n";
+        std::cout << "    C++ Shell / Terminal Emulator (cpp-shell)\n";
+        std::cout << "    Version: " << VERSION << "\n";
+        std::cout << "    Type '-help' to list available commands\n";
+        std::cout << "    **Created by Ojaskar and Sushant**\n";
+        std::cout << "  --------------------------------------------\n\n";
+    }
+    
+    // Display prompt
+    void displayPrompt() {
+        currentDirectory = getCurrentDirectory();
+        std::cout << "\033[36m" << username << "@cpp-shell \033[33m" << currentDirectory << "\033[0m\n";
+        std::cout << "\033[32m>>> \033[0m";
+    }
+    
+    // Read input from user
+    std::string readInput() {
+        std::string input;
+        if (!std::getline(std::cin, input)) {
+            std::cout << "\n";
+            running = false;
+            return "";
+        }
+        return input;
+    }
+    
+    // Parse command using CommandParser
+    void parseCommand(const std::string& input) {
+        parser.tokenize(input);
+    }
+    
+    // Execute command
+    void executeCommand() {
+        if (parser.isEmpty()) return;
+        
+        std::string cmd = parser.getCommand();
+        std::vector<std::string> args = parser.getArguments();
+        
+        // Check for exit first
+        if (cmd == "exit") {
+            running = builtIn->exit();
+            return;
+        }
+        
+        // Save to history (trim trailing space)
+        std::string fullCmd;
+        for (const auto& arg : args) fullCmd += arg + " ";
+        if (!fullCmd.empty()) {
+            fullCmd.pop_back(); // Remove trailing space
+            history.push_back(fullCmd);
+        }
+        
+        // Route to appropriate handler
+        if (cmd == "-help") {
+            builtIn->help();
+        }
+        else if (cmd == "-version") {
+            builtIn->version();
+        }
+        else if (cmd == "-history") {
+            builtIn->showHistory();
+        }
+        else if (cmd == "ls" || cmd == "dir") {
+            builtIn->ls(args);
+        }
+        else if (cmd == "cd") {
+            builtIn->cd(args);
+        }
+        else if (cmd == "cat" || cmd == "type") {
+            builtIn->cat(args);
+        }
+        else if (cmd == "mkdir") {
+            builtIn->mkdir(args);
+        }
+        else if (cmd == "clear" || cmd == "cls") {
+            builtIn->clear();
+        }
+        else if (cmd == "rm" || cmd == "del" || cmd == "delete") {
+            builtIn->rm(args);
         }
         else if (cmd == "wd" || cmd == "pwd") {
-            cmdWd();
+            builtIn->wd();
         }
         else if (cmd == "rename" || cmd == "ren") {
-            cmdRename(args);
+            builtIn->rename(args);
         }
         else if (cmd == "move" || cmd == "mv") {
-            cmdMove(args);
+            builtIn->move(args);
+        }
+        else if (cmd == "notepad") {
+            executor.runSystemCommand(cmd, args);
+        }
+        else if (cmd == "code") {
+            executor.runSystemCommand(cmd, args);
         }
         // Unknown command
         else {
             std::cout << "  '" << cmd << "' is not recognized.\n";
             std::cout << "  Type '-help' for available commands.\n";
         }
-
-        return true;
     }
-
-    // Main shell loop
-    void run() {
-        initialize();
-        std::string input;
-
+    
+    // Main run loop
+    void runLoop() {
+        start();
+        
         while (running) {
             displayPrompt();
-            
-            if (!std::getline(std::cin, input)) {
-                std::cout << "\n";
-                break;
-            }
-
-            running = processCommand(input);
+            std::string input = readInput();
+            parseCommand(input);
+            executeCommand();
         }
     }
 };
@@ -434,7 +493,6 @@ public:
 // ============================================================================
 
 int main() {
-    // Allocate a new console if not attached (for popup window behavior)
     if (GetConsoleWindow() == NULL) {
         AllocConsole();
         freopen("CONIN$", "r", stdin);
@@ -442,12 +500,8 @@ int main() {
         freopen("CONOUT$", "w", stderr);
     }
     
-    // Set console window size
     HWND console = GetConsoleWindow();
     if (console != NULL) {
-        // Move window to center of screen
-        RECT rect;
-        GetWindowRect(console, &rect);
         int width = 800;
         int height = 500;
         int screenWidth = GetSystemMetrics(SM_CXSCREEN);
@@ -457,7 +511,7 @@ int main() {
         MoveWindow(console, x, y, width, height, TRUE);
     }
     
-    Shell shell;
-    shell.run();
+    Terminal terminal;
+    terminal.runLoop();
     return 0;
 }
